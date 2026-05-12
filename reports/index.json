@@ -1,0 +1,11 @@
+{
+  "client_id": "ulna-se",
+  "client_display_name": "Ulna SE",
+  "reports": [
+    {
+      "file": "2026-04.html",
+      "month": "2026-04",
+      "label": "April 2026"
+    }
+  ]
+}
