@@ -317,7 +317,140 @@
         console.error('[cyntora] failed to hydrate chart', c.id, e);
       }
     });
+    attachChartObservers();
   }
+
+  // Robust responsive resize. Chart.js v4's built-in `responsive:true`
+  // listens to window resize, but in practice when a CSS grid changes
+  // breakpoint (e.g. 2-col → 1-col at 1024px) the container width can
+  // change much more than the window did, and Chart.js sometimes measures
+  // the parent BEFORE the new layout has been committed. The reliable
+  // fix here is destructive: on each container size change, fully tear
+  // down the existing chart instance and rebuild it from its `data-cyntora`
+  // spec — that way Chart.js measures the parent FRESH at its current
+  // dimensions, with no cached size assumptions from init.
+  function rebuildChart(canvas) {
+    var existing = (typeof Chart.getChart === 'function') ? Chart.getChart(canvas) : null;
+    if (existing) {
+      try { existing.destroy(); } catch (e) { /* ignore */ }
+    }
+    // CRITICAL — break the canvas/parent feedback loop on large→small reflows.
+    //
+    // Chart.js with `responsive:true; maintainAspectRatio:false` sets
+    // explicit `width="691"` and `style.width: 691px` on the canvas tag at
+    // init. After the user shrinks the window, the canvas KEEPS those 691px
+    // dimensions. Because the canvas is 691px wide as a DOM element, it
+    // FORCES its parent (.chart-wrap → .chart-card → .card-grid → .wrap)
+    // to stay 691px wide too — pushing the whole page wider than the
+    // viewport. The user sees content cut off on the right.
+    //
+    // If we just `destroy()` and re-init, Chart.js measures `parentElement`
+    // again — but parent is STILL 691px wide because the canvas hasn't
+    // shrunk yet. So the new chart spawns at 691px again. Endless loop.
+    //
+    // The fix: collapse the canvas to 0×0 FIRST, force a layout reflow on
+    // the parent so it shrinks to its CSS-driven natural width without
+    // the canvas pushing it wide, THEN clear the styles and let Chart.js
+    // re-measure parent. Now parent reports its true viewport-fitted width
+    // and the new chart spawns at the correct size.
+    canvas.removeAttribute('width');
+    canvas.removeAttribute('height');
+    canvas.style.width = '0px';
+    canvas.style.height = '0px';
+    canvas.style.maxWidth = '0px';
+    canvas.style.maxHeight = '0px';
+    // Force a synchronous layout pass so the parent reflows without the
+    // canvas occupying any space.
+    void canvas.parentElement.offsetWidth;
+    // Now reset to let CSS govern dimensions again.
+    canvas.style.width = '';
+    canvas.style.height = '';
+    canvas.style.maxWidth = '';
+    canvas.style.maxHeight = '';
+    try {
+      var spec = JSON.parse(canvas.getAttribute('data-cyntora') || '{}');
+    } catch (e) { return; }
+    var fn = ({
+      line: window.cyntoraLine,
+      bar: window.cyntoraBar,
+      donut: window.cyntoraDonut,
+      sparkline: window.cyntoraInlineSparkline,
+    })[spec.kind];
+    if (fn) { try { fn(canvas.id, spec); } catch (e) { /* ignore */ } }
+  }
+
+  var pending = false;
+  function rebuildAllCharts() {
+    pending = false;
+    document.querySelectorAll('canvas[data-cyntora]').forEach(rebuildChart);
+  }
+  function scheduleRebuild() {
+    if (pending) return;
+    pending = true;
+    // Two rAF ticks: the first waits for the browser to commit any in-flight
+    // layout reflow, the second waits for that paint to settle. Empirically
+    // single-rAF still measured pre-reflow on some viewport changes.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(rebuildAllCharts);
+    });
+  }
+
+  var observedSet = new WeakSet();
+  function attachChartObservers() {
+    if (typeof ResizeObserver !== 'function') {
+      // Old browser — fall back to window resize only.
+      return;
+    }
+    // Observe EVERY canvas[data-cyntora]'s direct parent (the chart-wrap).
+    // Watching the parent catches any layout reflow that changes the
+    // canvas's available width, regardless of which wrapper class the
+    // chart uses (chart-card, donut-row half, KPI-strip sparkline cell).
+    // Belt-and-braces: also observe the .wrap container so we catch the
+    // global container width changing too.
+    document.querySelectorAll('canvas[data-cyntora]').forEach(function (canvas) {
+      var parent = canvas.parentElement;
+      if (!parent || observedSet.has(parent)) return;
+      observedSet.add(parent);
+      var ro = new ResizeObserver(scheduleRebuild);
+      ro.observe(parent);
+    });
+    // Also observe each .wrap so any container-level reflow triggers a
+    // rebuild even if the chart's immediate parent didn't get a clean
+    // size-change event (some browsers coalesce nested-element resizes).
+    document.querySelectorAll('.wrap, .section').forEach(function (el) {
+      if (observedSet.has(el)) return;
+      observedSet.add(el);
+      var ro2 = new ResizeObserver(scheduleRebuild);
+      ro2.observe(el);
+    });
+  }
+
+  window.addEventListener('resize', scheduleRebuild);
+
+  // Font-loading completion can also shift layout dimensions slightly. After
+  // each font finishes loading, force one final rebuild so chart labels
+  // match the post-font measurements.
+  if (document.fonts && typeof document.fonts.ready !== 'undefined') {
+    document.fonts.ready.then(scheduleRebuild);
+  }
+
+  // Belt-and-braces poll: every 800ms, find any canvas whose displayed width
+  // has drifted from its parent's width by more than 5px and rebuild it.
+  // This catches the rare case where ResizeObserver doesn't fire for a
+  // specific element (some browsers skip nested-element resize events
+  // during continuous drag-resize, especially when the parent is inside
+  // a grid that itself is inside another grid).
+  setInterval(function () {
+    document.querySelectorAll('canvas[data-cyntora]').forEach(function (canvas) {
+      var parent = canvas.parentElement;
+      if (!parent) return;
+      var pW = parent.getBoundingClientRect().width;
+      var cW = canvas.getBoundingClientRect().width;
+      if (pW > 0 && Math.abs(pW - cW) > 5) {
+        rebuildChart(canvas);
+      }
+    });
+  }, 800);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', hydrateAll);

@@ -66,8 +66,19 @@
   --accent-soft: rgba(39, 39, 35, 0.06);
   --brass: #B58F4B;       --brass-soft: rgba(181, 143, 75, 0.12);
 
-  --font-display: "Guau", "Playfair Display", Georgia, serif;
-  --font-body: "TT Hoves Pro Trial", "Montserrat", "Raleway", "Poppins", -apple-system, system-ui, sans-serif;
+  /* Per Cyntora design.md (DESIGN_CYNTORA.md): Poppins for display +
+     headlines; TT Hoves Pro Trial as the UI workhorse; Montserrat for
+     long-form. TT Hoves Pro Trial is a paid TypeType font and not
+     served from Google Fonts, so it falls back to Montserrat for
+     readers without a local copy — both ride the same warm-sans
+     personality so the report still reads like Cyntora. */
+  --font-display: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: "TT Hoves Pro Trial", "Montserrat", "Trebuchet MS", Arial, sans-serif;
+  /* Optional brand-specific cover font (e.g. CM Betong Orbitron). Falls
+     back to --font-display when not set so cover stays consistent with
+     the rest of the report. Used ONLY for .cover h1 / .cover__eyebrow /
+     .cover__kicker — section + chart titles always use --font-display. */
+  --font-cover: var(--font-display);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -130,7 +141,11 @@ a { color: inherit; }
 }
 .report-nav__dropdown select,
 .report-nav__period select {
-  background: var(--bg-cream-soft); color: var(--ink);
+  /* Transparent fill — the nav itself already has bg-cream as its background,
+     filling the dropdown again created a "card-inside-card" look. Keep just
+     the border + caret so the dropdown reads as a tap target without
+     stealing visual weight from the nav. */
+  background-color: transparent; color: var(--ink);
   border: 1px solid var(--border);
   font-family: var(--font-body); font-size: 13px; font-weight: 500;
   padding: 8px 28px 8px 12px;
@@ -195,15 +210,25 @@ section.page--dark .eyebrow { color: var(--ink-muted-dark); }
   font-family: var(--font-body);
   font-size: 11px; font-weight: 600;
   letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--brass); margin-bottom: 24px;
+  /* Use ink-on-dark instead of brass so brands whose accent == bg_dark
+     (e.g. Absorbest, where both are #003388) don't render the eyebrow
+     invisible-on-itself. ink-on-dark is contract-bound to contrast with
+     bg_dark by definition. */
+  color: var(--ink-on-dark); margin-bottom: 24px;
   display: inline-flex; align-items: center; gap: 10px;
+  opacity: 0.7;  /* slightly soften so the H1 remains the visual anchor */
 }
 .cover__eyebrow::before {
   content: ""; width: 24px; height: 1px;
-  background: var(--brass); display: inline-block;
+  background: var(--ink-on-dark); display: inline-block;
+  opacity: 0.5;
 }
 .cover h1 {
-  color: var(--ink-on-dark);
+  font-family: var(--font-cover);
+  /* --cover-title lets a brand color the cover + next-steps headings
+     (e.g. Helens för Körkort's yellow on the near-black band). Falls
+     back to --ink-on-dark when the brand doesn't set it. */
+  color: var(--cover-title, var(--ink-on-dark));
   font-size: clamp(36px, 8vw, 112px);
   font-weight: 400; line-height: 0.98;
   letter-spacing: -0.025em;
@@ -292,6 +317,27 @@ section.page--dark .eyebrow { color: var(--ink-muted-dark); }
 }
 .card-grid--asym { grid-template-columns: 1fr 1fr; }
 @media (max-width: 700px) { .card-grid--asym { grid-template-columns: 1fr; } }
+
+/* Cap base .card-grid to MAX 3 columns on wide screens. Without this the
+   `auto-fit` at 220px min spawns 4-5+ narrow cards on 1180px+ containers
+   and headline values + delta chips wrap. Variant grids (--asym, --3)
+   keep their own column counts via the :not() exclusions. */
+@media (min-width: 901px) {
+  .card-grid:not(.card-grid--asym):not(.card-grid--3) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* HOWEVER — when a .card-grid contains .chart-card children (donut +
+     legend, or chart + chart), cap at 2 columns instead. Three columns
+     squeezes each chart-card to ~370px which leaves the donut-row
+     (1fr 1fr internal grid) with ~150px per side — the legend then wraps
+     to one character per line and visually overflows into the neighbour
+     card. Two columns gives each card ~570px and the donut+legend each
+     get ~270px which fits real text. */
+  .card-grid:has(.chart-card):not(.card-grid--asym):not(.card-grid--3) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .card--icon { display: none; }
 
 .card {
@@ -327,12 +373,17 @@ section.page--dark .card__value { color: var(--ink-on-dark); }
 
 /* ──────────────────────────── Charts ──────────────────────────── */
 .chart-card {
-  background: var(--bg-cream-soft);
+  /* Transparent so the chart-card visually matches surrounding KPI cards
+     (which are background-less). Prior cream-soft fill made charts look
+     boxed in while the rest of the section was flat — especially the GSC
+     Impressions chart sitting between flat KPI cards above and a flat
+     keywords table below. A 1px border still defines the card edge. */
+  background: transparent;
   border: 1px solid var(--border);
   padding: 22px 24px;
 }
 section.page--dark .chart-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   border-color: var(--border-dark);
 }
 .chart-card__head {
@@ -353,12 +404,14 @@ section.page--dark .chart-card {
 }
 section.page--dark .chart-card__head .value,
 section.page--dark .chart-card__head .title { color: var(--ink-on-dark); }
-.chart-wrap { position: relative; height: 220px; }
-/* `--short` is the universal height for donuts, sparklines and any
-   inline trend chart. Must be the SAME across every section so donuts
-   are visually uniform. Do NOT override per-context — if a layout
-   needs more vertical room, fix the grid, not the chart. */
-.chart-wrap--short { height: 280px; }
+/* Single universal chart height. Both .chart-wrap and .chart-wrap--short
+   resolve to 280px so any combination of donut + line + bar inside a
+   .card-grid sits at the SAME pixel height. Mismatched heights caused
+   visual overlap (engagement chart card stretched while its inner canvas
+   stayed at 220px, leaving the donut legend appearing to extend past the
+   neighbour). One number, no per-chart overrides. */
+.chart-wrap,
+.chart-wrap--short { position: relative; height: 280px; }
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 28px; }
 .chart-row--3 { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 900px) { .chart-row, .chart-row--3 { grid-template-columns: 1fr; } }
@@ -451,6 +504,44 @@ section.page--dark .data-table td:first-child { color: var(--ink-on-dark); }
 section.page--dark .takeaway,
 section.page--dark .section__takeaway { background: rgba(181, 143, 75, 0.16); color: var(--ink-on-dark); }
 section.page--dark .takeaway__label { color: var(--brass); }
+
+/* Sentiment band — deterministic green/yellow/red color of each
+   "Sammanfattning" box, derived from the section's key_numbers by
+   `derive_section_sentiments()` in insights_generator. Independent of
+   the per-brand `--accent` palette so the semantic meaning reads the
+   same across every report.
+     positive → green   (≥66% of meaningful YoY deltas are positive)
+     neutral  → amber   (flat or mixed — default for sections w/o data)
+     review   → red     (majority negative — flag for attention)
+   Dark sections get a stronger background tint so the band stays
+   legible against the dark band color. */
+.takeaway--positive {
+  border-left-color: #2F8C5F;
+  background: rgba(47, 140, 95, 0.09);
+}
+.takeaway--positive .takeaway__label { color: #2F8C5F; }
+.takeaway--neutral {
+  border-left-color: #C68B17;
+  background: rgba(198, 139, 23, 0.08);
+}
+.takeaway--neutral .takeaway__label { color: #C68B17; }
+.takeaway--review {
+  border-left-color: #C0392B;
+  background: rgba(192, 57, 43, 0.08);
+}
+.takeaway--review .takeaway__label { color: #C0392B; }
+section.page--dark .takeaway--positive {
+  background: rgba(76, 187, 124, 0.22);
+}
+section.page--dark .takeaway--positive .takeaway__label { color: #6EE0A1; }
+section.page--dark .takeaway--neutral {
+  background: rgba(232, 178, 65, 0.22);
+}
+section.page--dark .takeaway--neutral .takeaway__label { color: #F4C57A; }
+section.page--dark .takeaway--review {
+  background: rgba(232, 88, 73, 0.22);
+}
+section.page--dark .takeaway--review .takeaway__label { color: #F08A7E; }
 .unavailable {
   margin-top: 16px;
   padding: 16px 20px;
@@ -465,6 +556,7 @@ section.page--dark .unavailable { background: rgba(255, 255, 255, 0.05); border-
 .next-steps { padding-top: 16px; }
 .next-steps h2 {
   font-family: var(--font-display);
+  color: var(--cover-title, var(--ink-on-dark));
   font-size: clamp(28px, 3.2vw, 42px);
   font-weight: 400; letter-spacing: -0.015em;
   margin-bottom: 24px;
@@ -692,16 +784,21 @@ section.page--dark .sem-col__unavailable { border-color: rgba(255, 255, 255, 0.1
   .wrap { max-width: 100%; }
   /* Donut chart + adjacent line chart in same card-grid: stack at this
      width so each chart gets full width. Previously cramped at ~50%. */
-  .chart-row { grid-template-columns: 1fr; gap: 20px; }
-  .chart-row--3 { grid-template-columns: 1fr 1fr; }
-  /* Inner donut + legend layout: keep them side-by-side until ~600px */
-  .donut-row { grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-row { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .chart-row--3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* Inner donut + legend layout: keep them side-by-side until ~600px.
+     minmax(0, 1fr) prevents content (canvas with width attribute)
+     from forcing the column wider than the parent. */
+  .donut-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
   /* card-grid is used for both KPI strips AND "donut card + line chart"
      row. Force single-column on the donut+chart row at this width by
-     targeting card-grids that wrap chart-cards (donut/line). */
-  .card-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
-  .card-grid:has(.chart-card) { grid-template-columns: 1fr; }
-  .card-grid--asym { grid-template-columns: 1fr 1fr; }
+     targeting card-grids that wrap chart-cards. minmax(0, 1fr) for the
+     :has(.chart-card) case so a canvas with width="691" baked-in HTML
+     attribute can't push the column past viewport — the canvas/CSS
+     feedback loop that was the root cause of the resize stuck-width bug. */
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .card-grid:has(.chart-card) { grid-template-columns: minmax(0, 1fr); }
+  .card-grid--asym { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
 @media (max-width: 768px) {
@@ -737,17 +834,24 @@ section.page--dark .sem-col__unavailable { border-color: rgba(255, 255, 255, 0.1
   }
   .report-nav__dropdown select { flex: 1; min-width: 0; }
 
-  /* Cards / KPI stack */
-  .card-grid { grid-template-columns: repeat(2, 1fr); gap: 18px; }
-  .card-grid:has(.chart-card) { grid-template-columns: 1fr; gap: 24px; }
-  .card-grid--asym { grid-template-columns: 1fr 1fr; }
+  /* Cards / KPI stack — minmax(0, 1fr) instead of plain 1fr so a wide
+     child (e.g. a Chart.js canvas with width="691" attribute) cannot
+     force the column wider than the container. Plain `1fr` lets columns
+     grow past container if their content has min-content larger than the
+     fr-unit. This was the root cause of charts persisting at their
+     pre-resize pixel width: the canvas's HTML width attribute forced
+     the grid column wider than viewport. */
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .card-grid:has(.chart-card) { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .card-grid--asym { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .card__value { font-size: clamp(28px, 8vw, 40px); }
   .card__value--big { font-size: clamp(32px, 9vw, 48px); }
   .card { padding: 14px 0 0; }
   .card__head { font-size: 11px; }
-  .chart-row--3 { grid-template-columns: 1fr; }
-  /* Donut card: stack donut + legend at this width so they don't squash */
-  .donut-row { grid-template-columns: 1fr; gap: 8px; }
+  .chart-row--3 { grid-template-columns: minmax(0, 1fr); }
+  /* Donut card: stack donut + legend at this width so they don't squash.
+     minmax(0, 1fr) prevents wide canvas children from blowing out the row. */
+  .donut-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   /* Chart cards: tighter padding on narrow screens */
   .chart-card { padding: 18px 18px; }
 
@@ -765,9 +869,11 @@ section.page--dark .sem-col__unavailable { border-color: rgba(255, 255, 255, 0.1
   .next-steps li { font-size: 15px; padding-left: 20px; }
   .next-steps__uppsell { padding: 16px 18px; }
 
-  /* Chart heights */
-  .chart-wrap { height: 200px; }
-  .chart-wrap--short { height: 130px; }
+  /* Chart heights — unified just like the desktop rule, so donut + line
+     + bar cards in the same row align pixel-perfectly even on laptops
+     hitting the ≤1024px breakpoint. Never split these two selectors. */
+  .chart-wrap,
+  .chart-wrap--short { height: 220px; }
 }
 
 @media (max-width: 480px) {
